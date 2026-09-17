@@ -1,49 +1,31 @@
 export class ClientSession {
-  public readonly clientId: string;
-  public readonly clientName: string;
-  public readonly connectedAt: Date;
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly connectedAt = new Date();
+  private socketId_: string;
+  private tasks_ = new Set<string>();
 
-  private _socketId: string;
-  private readonly _taskIds: Set<string>;
-
-  constructor(params: {
-    clientId: string;
-    clientName: string;
-    socketId: string;
-  }) {
-    this.clientId = params.clientId;
-    this.clientName = params.clientName;
-    this.connectedAt = new Date();
-    this._socketId = params.socketId;
-    this._taskIds = new Set();
+  constructor(clientId: string, clientName: string, socketId: string) {
+    this.clientId = clientId;
+    this.clientName = clientName;
+    this.socketId_ = socketId;
   }
 
-  get socketId(): string { return this._socketId; }
-  get taskIds(): ReadonlySet<string> { return this._taskIds; }
-  get taskCount(): number { return this._taskIds.size; }
+  get socketId() { return this.socketId_; }
+  get taskCount() { return this.tasks_.size; }
 
-  public updateSocketId(newSocketId: string): void {
-    this._socketId = newSocketId;
-  }
+  reconnect(socketId: string) { this.socketId_ = socketId; }
 
-  public addTask(taskId: string): void {
-    this._taskIds.add(taskId);
-  }
+  addTask(id: string) { this.tasks_.add(id); }
+  removeTask(id: string) { this.tasks_.delete(id); }
+  ownsTask(id: string) { return this.tasks_.has(id); }
 
-  public removeTask(taskId: string): void {
-    this._taskIds.delete(taskId);
-  }
-
-  public ownsTask(taskId: string): boolean {
-    return this._taskIds.has(taskId);
-  }
-
-  public toJSON() {
+  toJSON() {
     return {
       clientId: this.clientId,
       clientName: this.clientName,
       connectedAt: this.connectedAt.toISOString(),
-      taskCount: this._taskIds.size,
+      taskCount: this.tasks_.size,
     };
   }
 }

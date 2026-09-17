@@ -1,86 +1,68 @@
-import { Server as SocketIOServer, type Socket } from 'socket.io';
+import type { Server as SocketIOServer, Socket } from 'socket.io';
 import { SocketEvents, type IClientRegistration } from '@binaire/shared';
 import { QueueManager } from '../queue/QueueManager.js';
 import { ClientSession } from '../models/ClientSession.js';
 
 export class SocketHandler {
-  private readonly _io: SocketIOServer;
-  private readonly _queueManager: QueueManager;
-  private readonly _sessions: Map<string, ClientSession>;
+  private io: SocketIOServer;
+  private qm: QueueManager;
+  private sessions = new Map<string, ClientSession>();
 
-  constructor(io: SocketIOServer, queueManager: QueueManager) {
-    this._io = io;
-    this._queueManager = queueManager;
-    this._sessions = new Map();
-
-    this._bindQueueEvents();
-    this._io.on(SocketEvents.CONNECTION, (socket: Socket) => this._onConnection(socket));
+  constructor(io: SocketIOServer, qm: QueueManager) {
+    this.io = io;
+    this.qm = qm;
+    this.wireQueueEvents();
+    this.io.on(SocketEvents.CONNECTION, (s: Socket) => this.onConnect(s));
   }
 
-  private _onConnection(socket: Socket): void {
-    console.log(`[Socket] Connected: ${socket.id}`);
+  private onConnect(s: Socket) {
+    console.log(`[Socket] Connected: ${s.id}`);
 
-    socket.on(SocketEvents.CLIENT_REGISTER, (data: IClientRegistration) => {
-      const existing = this._sessions.get(data.clientId);
-
+    s.on(SocketEvents.CLIENT_REGISTER, (data: IClientRegistration) => {
+      const existing = this.sessions.get(data.clientId);
       if (existing) {
-        existing.updateSocketId(socket.id);
+        existing.reconnect(s.id);
       } else {
-        const session = new ClientSession({
-          clientId: data.clientId,
-          clientName: data.clientName,
-          socketId: socket.id,
-        });
-        this._sessions.set(data.clientId, session);
+        this.sessions.set(data.clientId, new ClientSession(data.clientId, data.clientName, s.id));
       }
 
       console.log(`[Socket] Registered: ${data.clientName} (${data.clientId})`);
-
-      socket.emit(SocketEvents.QUEUE_STATUS, this._queueManager.getAllTasks());
-      socket.emit(SocketEvents.QUEUE_STATS, this._queueManager.getStats());
+      s.emit(SocketEvents.QUEUE_STATUS, this.qm.getAllTasks());
+      s.emit(SocketEvents.QUEUE_STATS, this.qm.getStats());
     });
 
-    socket.on(SocketEvents.DISCONNECT, () => {
-      console.log(`[Socket] Disconnected: ${socket.id}`);
-    });
-  }
-
-  private _bindQueueEvents(): void {
-    this._queueManager.on('task:status-update', (task) => {
-      this._io.emit(SocketEvents.TASK_STATUS_UPDATE, task);
-      this._io.emit(SocketEvents.QUEUE_STATUS, this._queueManager.getAllTasks());
-    });
-
-    this._queueManager.on('task:progress-update', (data) => {
-      const session = this._findSessionByClientId(data.taskId);
-      if (session) {
-        this._io.to(session.socketId).emit(SocketEvents.TASK_PROGRESS_UPDATE, data);
-      }
-      this._io.emit(SocketEvents.TASK_PROGRESS_UPDATE, data);
-    });
-
-    this._queueManager.on('task:completed', (data) => {
-      this._io.emit(SocketEvents.TASK_COMPLETED, data);
-      this._io.emit(SocketEvents.QUEUE_STATS, this._queueManager.getStats());
-    });
-
-    this._queueManager.on('task:failed', (data) => {
-      this._io.emit(SocketEvents.TASK_FAILED, data);
-      this._io.emit(SocketEvents.QUEUE_STATS, this._queueManager.getStats());
-    });
-
-    this._queueManager.on('queue:status', (tasks) => {
-      this._io.emit(SocketEvents.QUEUE_STATUS, tasks);
-    });
-
-    this._queueManager.on('queue:stats', (stats) => {
-      this._io.emit(SocketEvents.QUEUE_STATS, stats);
+    s.on(SocketEvents.DISCONNECT, () => {
+      console.log(`[Socket] Disconnected: ${s.id}`);
+      // TODO: consider cleaning up sessions after a timeout
     });
   }
 
-  private _findSessionByClientId(taskId: string): ClientSession | null {
-    const task = this._queueManager.getTask(taskId);
-    if (!task) return null;
-    return this._sessions.get(task.clientId) ?? null;
+  private wireQueueEvents() {
+    this.qm.on('task:status-update', (task) => {
+      this.io.emit(SocketEvents.TASK_STATUS_UPDATE, task);
+      this.io.emit(SocketEvents.QUEUE_STATUS, this.qm.getAllTasks());
+    });
+
+    this.qm.on('task:progress-update', (data) => {
+      this.io.emit(SocketEvents.TASK_PROGRESS_UPDATE, data);
+    });
+
+    this.qm.on('task:completed', (data) => {
+      this.io.emit(SocketEvents.TASK_COMPLETED, data);
+      this.io.emit(SocketEvents.QUEUE_STATS, this.qm.getStats());
+    });
+
+    this.qm.on('task:failed', (data) => {
+      this.io.emit(SocketEvents.TASK_FAILED, data);
+      this.io.emit(SocketEvents.QUEUE_STATS, this.qm.getStats());
+    });
+
+    this.qm.on('queue:status', (tasks) => {
+      this.io.emit(SocketEvents.QUEUE_STATUS, tasks);
+    });
+
+    this.qm.on('queue:stats', (stats) => {
+      this.io.emit(SocketEvents.QUEUE_STATS, stats);
+    });
   }
 }

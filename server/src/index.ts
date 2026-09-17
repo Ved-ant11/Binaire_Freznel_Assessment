@@ -1,6 +1,6 @@
 import express from 'express';
 import { createServer } from 'node:http';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server as SocketIO } from 'socket.io';
 import cors from 'cors';
 import { mkdirSync } from 'node:fs';
 import { Config } from './config.js';
@@ -9,49 +9,40 @@ import { SocketHandler } from './sockets/handler.js';
 import { createUploadRouter } from './routes/upload.js';
 
 const app = express();
-const httpServer = createServer(app);
+const server = createServer(app);
 
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: Config.CORS_ORIGIN,
-    methods: ['GET', 'POST'],
-  },
+const io = new SocketIO(server, {
+  cors: { origin: Config.CORS_ORIGIN, methods: ['GET', 'POST'] },
 });
 
+// ensure uploads dir exists
 mkdirSync(Config.UPLOAD_DIR, { recursive: true });
 
 app.use(cors({ origin: Config.CORS_ORIGIN }));
 app.use(express.json());
 
-const queueManager = new QueueManager();
-new SocketHandler(io, queueManager);
+const qm = new QueueManager();
+new SocketHandler(io, qm);
 
-app.use('/api/upload', createUploadRouter(queueManager));
+app.use('/api/upload', createUploadRouter(qm));
 
 app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    uptime: process.uptime(),
-    stats: queueManager.getStats(),
-  });
+  res.json({ status: 'ok', uptime: process.uptime(), stats: qm.getStats() });
 });
 
 app.get('/api/tasks', (_req, res) => {
-  res.json(queueManager.getAllTasks());
+  res.json(qm.getAllTasks());
 });
 
-const shutdown = async () => {
-  console.log('\n[Server] Shutting down gracefully...');
-  await queueManager.shutdown();
-  httpServer.close();
+// graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down...');
+  await qm.shutdown();
+  server.close();
   process.exit(0);
-};
+});
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-httpServer.listen(Config.PORT, () => {
-  console.log(`[Server] Running on http://localhost:${Config.PORT}`);
-  console.log(`[Server] Worker pool size: ${Config.WORKER_POOL_SIZE}`);
-  console.log(`[Server] Upload dir: ${Config.UPLOAD_DIR}`);
+server.listen(Config.PORT, () => {
+  console.log(`Server running on http://localhost:${Config.PORT}`);
+  console.log(`Workers: ${Config.WORKER_POOL_SIZE} | Uploads: ${Config.UPLOAD_DIR}`);
 });

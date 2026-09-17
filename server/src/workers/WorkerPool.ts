@@ -4,11 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { Task } from '../models/Task.js';
 import { Config } from '../config.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const WORKER_SCRIPT = path.resolve(__dirname, './csvProcessor.worker.ts');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WORKER_PATH = path.resolve(__dirname, './csvProcessor.worker.ts');
 
-type ProgressCallback = (progress: number, processId: string) => void;
+type OnProgress = (progress: number, processId: string) => void;
 
 interface WorkerResult {
   result: number;
@@ -18,83 +17,63 @@ interface WorkerResult {
 }
 
 export class WorkerPool {
-  private readonly _maxWorkers: number;
-  private _activeWorkers: Map<string, Worker>;
+  readonly maxWorkers: number;
+  private active = new Map<string, Worker>();
 
-  constructor(maxWorkers: number) {
-    this._maxWorkers = maxWorkers;
-    this._activeWorkers = new Map();
+  constructor(max: number) {
+    this.maxWorkers = max;
   }
 
-  get activeCount(): number { return this._activeWorkers.size; }
-  get maxWorkers(): number { return this._maxWorkers; }
+  get activeCount() { return this.active.size; }
 
-  public hasAvailableWorker(): boolean {
-    return this._activeWorkers.size < this._maxWorkers;
-  }
+  hasAvailableWorker() { return this.active.size < this.maxWorkers; }
 
-  public execute(task: Task, onProgress: ProgressCallback): Promise<WorkerResult> {
+  execute(task: Task, onProgress: OnProgress): Promise<WorkerResult> {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(WORKER_SCRIPT, {
+      const w = new Worker(WORKER_PATH, {
         workerData: { filePath: task.filePath, taskId: task.id },
         execArgv: ['--import', 'tsx'],
       });
 
-      const processId = `worker-${worker.threadId}`;
-      this._activeWorkers.set(task.id, worker);
+      const pid = `worker-${w.threadId}`;
+      this.active.set(task.id, w);
 
-      const timeout = setTimeout(() => {
-        worker.terminate();
-        this._activeWorkers.delete(task.id);
-        reject(new Error(`Worker timeout after ${Config.WORKER_TIMEOUT_MS}ms`));
+      const timer = setTimeout(() => {
+        w.terminate();
+        this.active.delete(task.id);
+        reject(new Error(`Timeout after ${Config.WORKER_TIMEOUT_MS / 1000}s`));
       }, Config.WORKER_TIMEOUT_MS);
 
-      worker.on('message', (msg: { type: string; progress?: number; result?: number; rows?: number; cols?: number; error?: string }) => {
-        switch (msg.type) {
-          case 'progress':
-            onProgress(msg.progress!, processId);
-            break;
-
-          case 'result':
-            clearTimeout(timeout);
-            this._activeWorkers.delete(task.id);
-            resolve({
-              result: msg.result!,
-              rows: msg.rows!,
-              cols: msg.cols!,
-              processId,
-            });
-            break;
-
-          case 'error':
-            clearTimeout(timeout);
-            this._activeWorkers.delete(task.id);
-            reject(new Error(msg.error));
-            break;
+      w.on('message', (msg: any) => {
+        if (msg.type === 'progress') {
+          onProgress(msg.progress, pid);
+        } else if (msg.type === 'result') {
+          clearTimeout(timer);
+          this.active.delete(task.id);
+          resolve({ result: msg.result, rows: msg.rows, cols: msg.cols, processId: pid });
+        } else if (msg.type === 'error') {
+          clearTimeout(timer);
+          this.active.delete(task.id);
+          reject(new Error(msg.error));
         }
       });
 
-      worker.on('error', (err) => {
-        clearTimeout(timeout);
-        this._activeWorkers.delete(task.id);
+      w.on('error', (err) => {
+        clearTimeout(timer);
+        this.active.delete(task.id);
         reject(err);
       });
 
-      worker.on('exit', (code) => {
-        clearTimeout(timeout);
-        this._activeWorkers.delete(task.id);
-        if (code !== 0) {
-          reject(new Error(`Worker exited with code ${code}`));
-        }
+      w.on('exit', (code) => {
+        clearTimeout(timer);
+        this.active.delete(task.id);
+        if (code !== 0) reject(new Error(`Worker exited with code ${code}`));
       });
     });
   }
 
-  public async terminate(): Promise<void> {
-    const terminations = Array.from(this._activeWorkers.values()).map((worker) =>
-      worker.terminate()
-    );
-    await Promise.allSettled(terminations);
-    this._activeWorkers.clear();
+  async terminate() {
+    await Promise.allSettled([...this.active.values()].map(w => w.terminate()));
+    this.active.clear();
   }
 }

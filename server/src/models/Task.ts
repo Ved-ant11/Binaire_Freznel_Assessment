@@ -2,24 +2,24 @@ import { v4 as uuidv4 } from 'uuid';
 import { type ITask, Priority, TaskStatus, STATUS_ORDER } from '@binaire/shared';
 
 export class Task {
-  public readonly id: string;
-  public readonly clientId: string;
-  public readonly clientName: string;
-  public readonly fileName: string;
-  public readonly filePath: string;
-  public readonly priority: Priority;
-  public readonly fileSize: number;
-  public readonly createdAt: Date;
+  readonly id: string;
+  readonly clientId: string;
+  readonly clientName: string;
+  readonly fileName: string;
+  readonly filePath: string;
+  readonly priority: Priority;
+  readonly fileSize: number;
+  readonly createdAt: Date;
 
-  private _status: TaskStatus;
-  private _progress: number;
-  private _result: number | null;
-  private _rows: number;
-  private _cols: number;
-  private _processId: string | null;
-  private _error: string | null;
-  private _startedAt: Date | null;
-  private _completedAt: Date | null;
+  private status_: TaskStatus = TaskStatus.UPLOADING;
+  private progress_ = 0;
+  private result_: number | null = null;
+  private rows_ = 0;
+  private cols_ = 0;
+  private processId_: string | null = null;
+  private error_: string | null = null;
+  private startedAt_: Date | null = null;
+  private completedAt_: Date | null = null;
 
   constructor(params: {
     clientId: string;
@@ -37,85 +37,63 @@ export class Task {
     this.priority = params.priority;
     this.fileSize = params.fileSize;
     this.createdAt = new Date();
-
-    this._status = TaskStatus.UPLOADING;
-    this._progress = 0;
-    this._result = null;
-    this._rows = 0;
-    this._cols = 0;
-    this._processId = null;
-    this._error = null;
-    this._startedAt = null;
-    this._completedAt = null;
   }
 
-  get status(): TaskStatus { return this._status; }
-  get progress(): number { return this._progress; }
-  get result(): number | null { return this._result; }
-  get rows(): number { return this._rows; }
-  get cols(): number { return this._cols; }
-  get rank(): string { return `${this._rows}x${this._cols}`; }
-  get processId(): string | null { return this._processId; }
-  get error(): string | null { return this._error; }
-  get startedAt(): Date | null { return this._startedAt; }
-  get completedAt(): Date | null { return this._completedAt; }
+  get status() { return this.status_; }
+  get progress() { return this.progress_; }
+  get result() { return this.result_; }
+  get rows() { return this.rows_; }
+  get cols() { return this.cols_; }
+  get processId() { return this.processId_; }
+  get error() { return this.error_; }
+  get startedAt() { return this.startedAt_; }
+  get completedAt() { return this.completedAt_; }
+  get rank() { return `${this.rows_}x${this.cols_}`; }
 
   get waitTimeMs(): number {
-    const end = this._startedAt || new Date();
-    return end.getTime() - this.createdAt.getTime();
+    return (this.startedAt_ || new Date()).getTime() - this.createdAt.getTime();
   }
 
-  public updateStatus(newStatus: TaskStatus): void {
-    if (newStatus === TaskStatus.FAILED) {
-      this._status = TaskStatus.FAILED;
-      this._completedAt = new Date();
+  updateStatus(next: TaskStatus) {
+    // FAILED is reachable from any state
+    if (next === TaskStatus.FAILED) {
+      this.status_ = TaskStatus.FAILED;
+      this.completedAt_ = new Date();
       return;
     }
 
-    const currentIndex = STATUS_ORDER.indexOf(this._status);
-    const newIndex = STATUS_ORDER.indexOf(newStatus);
-
-    if (newIndex <= currentIndex) {
-      throw new Error(
-        `Invalid status transition: ${this._status} → ${newStatus}`
-      );
+    const cur = STATUS_ORDER.indexOf(this.status_);
+    const nxt = STATUS_ORDER.indexOf(next);
+    if (nxt <= cur) {
+      throw new Error(`Invalid transition: ${this.status_} → ${next}`);
     }
 
-    this._status = newStatus;
-
-    if (newStatus === TaskStatus.PROCESSING) {
-      this._startedAt = new Date();
-    }
-
-    if (newStatus === TaskStatus.COMPLETED) {
-      this._completedAt = new Date();
-      this._progress = 100;
+    this.status_ = next;
+    if (next === TaskStatus.PROCESSING) this.startedAt_ = new Date();
+    if (next === TaskStatus.COMPLETED) {
+      this.completedAt_ = new Date();
+      this.progress_ = 100;
     }
   }
 
-  public updateProgress(percentage: number): void {
-    this._progress = Math.max(0, Math.min(100, Math.round(percentage)));
+  updateProgress(pct: number) {
+    this.progress_ = Math.max(0, Math.min(100, Math.round(pct)));
   }
 
-  public setDimensions(rows: number, cols: number): void {
-    this._rows = rows;
-    this._cols = cols;
+  setDimensions(rows: number, cols: number) {
+    this.rows_ = rows;
+    this.cols_ = cols;
   }
 
-  public setProcessId(processId: string): void {
-    this._processId = processId;
-  }
+  setProcessId(pid: string) { this.processId_ = pid; }
+  setResult(val: number) { this.result_ = val; }
 
-  public setResult(result: number): void {
-    this._result = result;
-  }
-
-  public fail(error: string): void {
-    this._error = error;
+  fail(msg: string) {
+    this.error_ = msg;
     this.updateStatus(TaskStatus.FAILED);
   }
 
-  public toJSON(): ITask {
+  toJSON(): ITask {
     return {
       id: this.id,
       clientId: this.clientId,
@@ -123,18 +101,18 @@ export class Task {
       fileName: this.fileName,
       filePath: this.filePath,
       priority: this.priority,
-      status: this._status,
-      progress: this._progress,
-      result: this._result,
+      status: this.status_,
+      progress: this.progress_,
+      result: this.result_,
       rank: this.rank,
-      rows: this._rows,
-      cols: this._cols,
+      rows: this.rows_,
+      cols: this.cols_,
       fileSize: this.fileSize,
-      processId: this._processId,
-      error: this._error,
+      processId: this.processId_,
+      error: this.error_,
       createdAt: this.createdAt.toISOString(),
-      startedAt: this._startedAt?.toISOString() ?? null,
-      completedAt: this._completedAt?.toISOString() ?? null,
+      startedAt: this.startedAt_?.toISOString() ?? null,
+      completedAt: this.completedAt_?.toISOString() ?? null,
     };
   }
 }

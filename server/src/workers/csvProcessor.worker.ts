@@ -3,53 +3,37 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { parse } from 'csv-parse';
 
-interface WorkerInput {
-  filePath: string;
-  taskId: string;
-}
+const { filePath, taskId } = workerData as { filePath: string; taskId: string };
 
-const { filePath, taskId } = workerData as WorkerInput;
+async function run() {
+  if (!parentPort) throw new Error('Must be run as a worker thread');
 
-async function processCSV(): Promise<void> {
-  if (!parentPort) throw new Error('Must run as worker thread');
+  const { size: totalBytes } = await stat(filePath);
+  let sum = 0, rowCount = 0, colCount = 0;
+  let bytesRead = 0, lastProgress = 0;
 
-  const fileStats = await stat(filePath);
-  const totalBytes = fileStats.size;
-
-  let sum = 0;
-  let rowCount = 0;
-  let colCount = 0;
-  let bytesProcessed = 0;
-  let lastReportedProgress = 0;
-
-  const readStream = createReadStream(filePath);
-  const parser = parse({
-    relax_column_count: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
+  const stream = createReadStream(filePath);
+  const parser = parse({ relax_column_count: true, skip_empty_lines: true, trim: true });
 
   return new Promise<void>((resolve, reject) => {
-    readStream.on('data', (chunk: string | Buffer) => {
-      bytesProcessed += Buffer.byteLength(chunk);
+    stream.on('data', (chunk: string | Buffer) => {
+      bytesRead += Buffer.byteLength(chunk);
     });
 
     parser.on('data', (row: string[]) => {
       rowCount++;
       if (row.length > colCount) colCount = row.length;
 
+      // all-reduce: sum every numeric cell
       for (const cell of row) {
-        const num = parseFloat(cell);
-        if (!isNaN(num) && isFinite(num)) sum += num;
+        const n = parseFloat(cell);
+        if (!isNaN(n) && isFinite(n)) sum += n;
       }
 
-      const progress = Math.round((bytesProcessed / totalBytes) * 100);
-      if (progress - lastReportedProgress >= 2) {
-        lastReportedProgress = progress;
-        parentPort!.postMessage({
-          type: 'progress',
-          progress: Math.min(progress, 99),
-        });
+      const pct = Math.round((bytesRead / totalBytes) * 100);
+      if (pct - lastProgress >= 2) {
+        lastProgress = pct;
+        parentPort!.postMessage({ type: 'progress', progress: Math.min(pct, 99) });
       }
     });
 
@@ -58,21 +42,21 @@ async function processCSV(): Promise<void> {
       resolve();
     });
 
-    parser.on('error', (err: Error) => {
-      parentPort!.postMessage({ type: 'error', error: `CSV parse error: ${err.message}` });
-      reject(err);
+    parser.on('error', (e: Error) => {
+      parentPort!.postMessage({ type: 'error', error: e.message });
+      reject(e);
     });
 
-    readStream.on('error', (err: Error) => {
-      parentPort!.postMessage({ type: 'error', error: `File read error: ${err.message}` });
-      reject(err);
+    stream.on('error', (e: Error) => {
+      parentPort!.postMessage({ type: 'error', error: e.message });
+      reject(e);
     });
 
-    readStream.pipe(parser);
+    stream.pipe(parser);
   });
 }
 
-processCSV().catch((err) => {
-  parentPort?.postMessage({ type: 'error', error: `Worker fatal: ${err.message}` });
+run().catch(e => {
+  parentPort?.postMessage({ type: 'error', error: e.message });
   process.exit(1);
 });
