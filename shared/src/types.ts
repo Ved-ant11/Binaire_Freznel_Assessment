@@ -68,16 +68,17 @@ export interface ITaskCompletion {
   completedAt: string;
 }
 
-export const STATUS_ORDER: readonly TaskStatus[] = Object.freeze([
+// Intentionally excludes FAILED — it's an off-ramp, not a step in the pipeline
+export const STATUS_ORDER: readonly TaskStatus[] = [
   TaskStatus.UPLOADING,
   TaskStatus.UPLOADED,
   TaskStatus.QUEUED,
   TaskStatus.WAITING,
   TaskStatus.PROCESSING,
   TaskStatus.COMPLETED,
-]);
+] as const;
 
-export const SocketEvents = Object.freeze({
+export const SocketEvents = {
   CONNECTION: 'connection',
   DISCONNECT: 'disconnect',
   CLIENT_REGISTER: 'client:register',
@@ -88,13 +89,13 @@ export const SocketEvents = Object.freeze({
   TASK_FAILED: 'task:failed',
   QUEUE_STATUS: 'queue:status',
   QUEUE_STATS: 'queue:stats',
-} as const);
+} as const;
 
-export const Defaults = Object.freeze({
+export const Defaults = {
   MAX_FILE_SIZE_MB: 50,
-  MAX_FILE_SIZE_BYTES: 50 * 1024 * 1024,
-  ALLOWED_MIME_TYPES: ['text/csv', 'application/vnd.ms-excel'] as readonly string[],
+  MAX_FILE_SIZE_BYTES: 50 * 1024 * 1024, // 50MB
+  ALLOWED_MIME_TYPES: ['text/csv', 'application/vnd.ms-excel'],
   AGING_THRESHOLD_MS: 30_000,
   MAX_CONCURRENT_PER_CLIENT: 10,
   STARVATION_RATIO: 3,
-});
+} as const;

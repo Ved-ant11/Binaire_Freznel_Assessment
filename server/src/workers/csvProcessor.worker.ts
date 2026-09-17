@@ -30,8 +30,8 @@ async function processCSV(): Promise<void> {
   });
 
   return new Promise<void>((resolve, reject) => {
-    readStream.on('data', (chunk: Buffer) => {
-      bytesProcessed += chunk.length;
+    readStream.on('data', (chunk: string | Buffer) => {
+      bytesProcessed += Buffer.byteLength(chunk);
     });
 
     parser.on('data', (row: string[]) => {
