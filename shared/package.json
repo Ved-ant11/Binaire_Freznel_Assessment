@@ -1,0 +1,21 @@
+{
+  "name": "@binaire/shared",
+  "version": "1.0.0",
+  "description": "Shared types, interfaces, and constants for the queueing system",
+  "type": "module",
+  "main": "dist/types.js",
+  "types": "dist/types.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
