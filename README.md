@@ -2,6 +2,10 @@
 
 A distributed task queueing system that accepts CSV files from multiple clients, processes them in parallel using Worker Threads, and streams real-time progress to all connected users via WebSockets.
 
+## Live Deployments
+
+- **Frontend (Vercel):** [https://binaire-freznel-queue.vercel.app](https://binaire-freznel-queue.vercel.app)
+- **Backend (Render):** [https://binaire-freznel.onrender.com](https://binaire-freznel.onrender.com)
 ## Tech Stack
 
 | Layer | Technology |
