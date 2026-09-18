@@ -11,7 +11,6 @@ export class QueueManager extends EventEmitter {
   private pool: WorkerPool;
   private tasks = new Map<string, Task>();
   private consecutiveHigh = 0;
-  private processing = false;
 
   constructor() {
     super();
@@ -70,19 +69,15 @@ export class QueueManager extends EventEmitter {
     await this.pool.terminate();
   }
 
-  // --- scheduling ---
+  // scheduling
 
   private processNext() {
-    if (this.processing || !this.pool.hasAvailableWorker()) return;
+    while (this.pool.hasAvailableWorker()) {
+      const task = this.pickNext();
+      if (!task) break;
 
-    const task = this.pickNext();
-    if (!task) return;
-
-    this.processing = true;
-    this.runTask(task).finally(() => {
-      this.processing = false;
-      this.processNext();
-    });
+      this.runTask(task).finally(() => this.processNext());
+    }
   }
 
   private pickNext(): Task | null {
@@ -149,7 +144,7 @@ export class QueueManager extends EventEmitter {
     this.processNext();
   }
 
-  // --- broadcast helpers ---
+  // broadcast helpers
 
   private broadcastTask(task: Task) {
     this.emit('task:status-update', task.toJSON());
