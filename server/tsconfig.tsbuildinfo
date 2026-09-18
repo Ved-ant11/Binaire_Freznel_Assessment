@@ -1,1 +1,0 @@
-{"root":["./src/config.ts","./src/index.ts","./src/models/clientsession.ts","./src/models/task.ts","./src/queue/priorityqueue.ts","./src/queue/queuemanager.ts","./src/routes/upload.ts","./src/sockets/handler.ts","./src/workers/workerpool.ts","./src/workers/csvprocessor.worker.ts"],"version":"5.9.3"}
