@@ -5,7 +5,9 @@ import { Task } from '../models/Task.js';
 import { Config } from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WORKER_PATH = path.resolve(__dirname, './csvProcessor.worker.ts');
+const isTsNode = import.meta.url.endsWith('.ts');
+const workerExt = isTsNode ? '.ts' : '.js';
+const WORKER_PATH = path.resolve(__dirname, `./csvProcessor.worker${workerExt}`);
 
 type OnProgress = (progress: number, processId: string) => void;
 
@@ -32,7 +34,7 @@ export class WorkerPool {
     return new Promise((resolve, reject) => {
       const w = new Worker(WORKER_PATH, {
         workerData: { filePath: task.filePath, taskId: task.id },
-        execArgv: ['--import', 'tsx'],
+        execArgv: isTsNode ? ['--import', 'tsx'] : [],
       });
 
       const pid = `worker-${w.threadId}`;
