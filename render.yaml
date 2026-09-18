@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: binaire-backend
+    env: node
+    buildCommand: npm install && npx tsc --project shared/tsconfig.json && npm run build --workspace=server
+    startCommand: npm run start --workspace=server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        value: "https://<your-vercel-project-url>.vercel.app" 
+      - key: PORT
+        value: 3001

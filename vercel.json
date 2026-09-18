@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm install && npx tsc --project shared/tsconfig.json && npm run build --workspace=client",
+  "outputDirectory": "client/dist",
+  "installCommand": "npm install",
+  "framework": "vite"
+}

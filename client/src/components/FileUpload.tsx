@@ -52,7 +52,8 @@ export function FileUpload({ clientId, clientName }: FileUploadProps) {
     fd.append('priority', priority);
 
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const serverUrl = import.meta.env.VITE_SERVER_URL || '';
+      const res = await fetch(`${serverUrl}/api/upload`, { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Upload failed');
       setFile(null);
